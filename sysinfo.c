@@ -38,9 +38,13 @@
     snprintf(line, sizeof(line), "%s %d%c", line, i, c)
 */
 
-char plugin_name[]        = "weenfo";
-char plugin_version[]     = "0.3";
-char plugin_description[] = "WeeChat sysinfo plugin.";
+WEECHAT_PLUGIN_NAME("sysinfo");
+WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.");
+WEECHAT_PLUGIN_AUTHOR("Kambus <kambus@gmail.com>");
+WEECHAT_PLUGIN_VERSION("0.3");
+WEECHAT_PLUGIN_LICENSE("BSD");
+
+struct t_weechat_plugin *weechat_plugin = NULL;
 
 typedef struct {
 	char cpu[256];
@@ -378,11 +382,11 @@ add_to_line(char *line, char *info)
 /* ------------------------------------------------------------------ */
 
 int
-get_weenfo(char **argv, char *line)
+get_weenfo(char *line, char **argv, int argc)
 {
 	weenfo info;
 
-	if ((argv[2][0] == '\0') || !strcmp(argv[2], "all")) {
+	if ((argc < 2) || !strcmp(argv[1], "all")) {
 		cpu_info(&info);
 		uname_info(&info);
 		uptime_info(&info);
@@ -396,22 +400,22 @@ get_weenfo(char **argv, char *line)
 		add_to_line(line, info.load);
 		add_to_line(line, info.mem);
 		add_to_line(line, info.disk);
-	} else if (!strcmp(argv[2], "uname") || !strcmp(argv[2], "os")) {
+	} else if (!strcmp(argv[1], "uname") || !strcmp(argv[1], "os")) {
 		uname_info(&info);
 		strncpy(line, info.uname, 512);
-	} else if (!strcmp(argv[2], "cpu")) {
+	} else if (!strcmp(argv[1], "cpu")) {
 		cpu_info(&info);
 		strncpy(line, info.cpu, 512);
-	} else if (!strcmp(argv[2], "mem")) {
+	} else if (!strcmp(argv[1], "mem")) {
 		mem_info(&info);
 		strncpy(line, info.mem, 512);
-	} else if (!strcmp(argv[2], "disk")) {
+	} else if (!strcmp(argv[1], "disk")) {
 		disk_info(&info);
 		strncpy(line, info.disk, 512);
-	} else if (!strcmp(argv[2], "uptime")) {
+	} else if (!strcmp(argv[1], "uptime")) {
 		uptime_info(&info);
 		strncpy(line, info.uptime, 512);
-	} else if (!strcmp(argv[2], "load")) {
+	} else if (!strcmp(argv[1], "load")) {
 		load_info(&info);
 		strncpy(line, info.load, 512);
 	} else
@@ -423,41 +427,44 @@ get_weenfo(char **argv, char *line)
 /* ------------------------------------------------------------------ */
 
 int
-weenfo_cmd(t_weechat_plugin *plugin, int argc, char **argv,
-    char *handler_args, void *handler_pointer)
+weenfo_cmd(void *data, struct t_gui_buffer *buffer, int argc,
+    char **argv, char **argv_eol)
 {
 	char line[512];
 	line[0] = '\0';
 
-	get_weenfo(argv, line);
-	if (!strcmp(argv[1], "sys"))
-		plugin->exec_command(plugin, NULL, NULL, line);
-	else if (!strcmp(argv[1], "esys"))
-		plugin->print(plugin, NULL, NULL, line);
+	get_weenfo(line, argv, argc);
+	if (!strcmp(argv[0], "/sys"))
+		weechat_command(buffer, line);
+	else if (!strcmp(argv[0], "/esys"))
+		weechat_printf (buffer, "%s", line);
 
-	return PLUGIN_RC_OK;
+	return WEECHAT_RC_OK;
 }
 
 /* ------------------------------------------------------------------ */
 
 int
-weechat_plugin_init (t_weechat_plugin *plugin)
+weechat_plugin_init (struct t_weechat_plugin *plugin,
+                         int argc, char *argv[])
 {
-	plugin->cmd_handler_add (plugin, "sys",
-	    plugin_description,
-	    "options",
-	    "options: all, cpu, mem, uname|os, disk, uptime",
+	weechat_plugin = plugin;
+
+	weechat_hook_command("sys",
+	    "Send system informations",
+	    "all | cpu | mem | uname|os | disk | uptime | load",
+	    NULL,
 	    "all|cpu|mem|uname|os|disk|uptime|load",
 	    &weenfo_cmd,
-	    NULL, NULL);
+	    NULL);
 
-	plugin->cmd_handler_add (plugin, "esys",
-	    plugin_description,
-	    "options",
-	    "options: all, cpu, mem, uname|os, disk, uptime",
+	weechat_hook_command("esys",
+	    "Display system informations",
+	    "all | cpu | mem | uname|os | disk | uptime | load",
+	    NULL,
 	    "all|cpu|mem|uname|os|disk|uptime|load",
 	    &weenfo_cmd,
-	    NULL, NULL);
+	    NULL);
 
-	return PLUGIN_RC_OK;
+	return WEECHAT_RC_OK;
 }
