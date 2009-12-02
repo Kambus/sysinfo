@@ -17,11 +17,13 @@
 
 #include <sys/sysinfo.h>
 
-#elif defined __NetBSD__
+#elif defined __NetBSD__ || defined __FreeBSD__
 
 #include <time.h>
 #include <sys/param.h>
 #include <sys/sysctl.h>
+#include <sys/ucred.h>
+#include <sys/mount.h>
 
 #elif defined __sun && defined __SVR4
 
@@ -33,10 +35,8 @@
 
 #define BSIZE 256
 
-/*
 #define add_to_uptime(line, c, i) \
     snprintf(line, sizeof(line), "%s %d%c", line, i, c)
-*/
 
 WEECHAT_PLUGIN_NAME("sysinfo");
 WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.");
@@ -88,7 +88,18 @@ cpu_info(weenfo *info)
 #elif defined __NetBSD__
 
 	size_t size = sizeof(cpu);
-	sysctlbyname("machdep.cpu_brand", &cpuname, &size, NULL, 0);
+	sysctlbyname("machdep.cpu_brand", &cpu, &size, NULL, 0);
+
+#elif defined __FreeBSD__
+
+	int mid[2] = { CTL_HW, HW_MODEL };
+	int fmhz;
+	size_t size = sizeof(cpu);
+
+	sysctl(mid, 2, &cpu, &size, NULL, 0);
+	size = sizeof(fmhz);
+	sysctlbyname("hw.clockrate", &fmhz, &size, NULL, 0);
+	mhz = (float)fmhz;
 
 #elif defined __sun && defined __SVR4
 
@@ -134,30 +145,19 @@ uname_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-void
-add_to_uptime(char *line, char c, int i)
-{
-	char tmp[8];
-
-	snprintf(tmp, sizeof(tmp), " %d%c", i, c);
-	strncat(line, tmp, sizeof(line) - strlen(tmp));
-}
-
-/* ------------------------------------------------------------------ */
-
 int
 uptime_info(weenfo *info)
 {
-	uint64_t time;
+	time_t btime;
 	uint32_t week, day, hour, min;
 
 #if defined linux
 
 	struct sysinfo sinfo;
 	sysinfo(&sinfo);
-	time = (uint64_t)sinfo.uptime;
+	btime = (uint64_t)sinfo.uptime;
 
-#elif defined __NetBSD__
+#elif defined __NetBSD__ || defined __FreeBSD__
 
 	int mid[2] = { CTL_KERN, KERN_BOOTTIME };
 	struct timeval boottime;
@@ -167,7 +167,7 @@ uptime_info(weenfo *info)
 	sysctl(mid, 2, &boottime, &size, NULL, 0);
 
 	time(&now);
-	time = now - boottime.tv_sec;
+	btime = now - boottime.tv_sec;
 
 #elif defined __sun && defined __SVR4
 
@@ -184,15 +184,15 @@ uptime_info(weenfo *info)
 	if (ksp == NULL) err(1, "boot_time");
 
 	time(&now);
-	time = now - ksd->value.ui64;
+	btime = now - ksd->value.ui64;
 
 	kstat_close(kc);
 #endif
 
-	week = (uint32_t) time / (7 * 24 * 3600);
-	day  = (uint32_t)(time / (24 * 3600)) % 7;
-	hour = (uint32_t)(time / 3600) % 24;
-	min  = (uint32_t)(time / 60) % 60;
+	week = (uint32_t) btime / (7 * 24 * 3600);
+	day  = (uint32_t)(btime / (24 * 3600)) % 7;
+	hour = (uint32_t)(btime / 3600) % 24;
+	min  = (uint32_t)(btime / 60) % 60;
 
 	strncpy(info->uptime, "Uptime:", sizeof(info->uptime));
 
@@ -226,7 +226,7 @@ mem_info(weenfo *info)
 	uint32_t totalMem   = 0,
 		 freeMem    = 0,
 		 usedMem    = 0,
-		 buffersMem = 0,
+		 bufMem	    = 0,
 		 cachedMem  = 0;
 
 #if defined linux
@@ -247,7 +247,7 @@ mem_info(weenfo *info)
 			freeMem = atoi(pos + 2);
 		} else if(!strncmp(buffer, "Buffers:", 8)) {
 			pos = strchr(buffer, ':');
-			buffersMem = atoi(pos + 2);
+			bufMem = atoi(pos + 2);
 		} else if(!strncmp(buffer, "Cached:", 7)) {
 			pos = strchr(buffer, ':');
 			cachedMem = atoi(pos + 2);
@@ -255,26 +255,44 @@ mem_info(weenfo *info)
 	}
 	fclose(fp);
 
-	usedMem = totalMem - freeMem - buffersMem - cachedMem;
+	usedMem = totalMem - freeMem - bufMem - cachedMem;
 
 	/*
 	struct sysinfo sinfo;
 	totalMem = sinfo.totalram;
 	freeMem = sinfo.freeram;
-	buffersMem = sinfo.bufferram;
+	bufMem = sinfo.bufferram;
 	cachedMem = sinfo.?;
 	*/
-#elif defined __NetBSD
+#elif defined __NetBSD__
 
 	int mib[] = { CTL_VM, VM_UVMEXP2 };
 	const int pagesize = getpagesize();
-	struct uvmexp_sysctl uvmexp;
-	size_t size = sizeof(uvmexp);
+	struct uvmexp_sysctl uvm;
+	size_t size = sizeof(uvm);
 
-	sysctl(mib, 2, &uvmexp, &size, NULL, 0);
+	sysctl(mib, 2, &uvm, &size, NULL, 0);
 
-	totalMem = uvmexp.npages * pagesize;
-	usedMem  = (uvmexp.npages - uvmexp.free - uvmexp.inactive) * pagesize;
+	totalMem = uvm.npages * pagesize >> 10;
+	usedMem = (uvm.npages - uvm.free - uvm.inactive) * pagesize >> 10;
+
+#elif defined __FreeBSD__
+
+	const int pagesize = getpagesize();
+	size_t size = sizeof(totalMem);
+
+	sysctlbyname("hw.realmem", &totalMem, &size, NULL, 0);
+	size = sizeof(cachedMem);
+	sysctlbyname("vm.stats.vm.v_cache_count", &cachedMem, &size, NULL, 0);
+	size = sizeof(freeMem);
+	sysctlbyname("vm.stats.vm.v_free_count", &freeMem, &size, NULL, 0);
+	size = sizeof(bufMem);
+	sysctlbyname("vm.stats.vm.v_inactive_count", &bufMem, &size, NULL, 0);
+
+	usedMem = totalMem - (freeMem + bufMem + cachedMem) * pagesize;
+	/* We need them in KB... */
+	totalMem >>= 10;
+	usedMem >>= 10;
 
 #elif defined __sun && __SVR4
 
@@ -305,8 +323,8 @@ mem_info(weenfo *info)
 #endif
 
 	snprintf(info->mem, sizeof(info->mem),
-	    "Memory Usage: %.2fMB/%.2fMB (%.2f%%)",
-	    (float)usedMem / 1024, (float)totalMem / 1024,
+	    "Memory Usage: %.2fMB/%dMB (%.2f%%)",
+	    (float)usedMem / 1024, totalMem >> 10,
 	    (float)usedMem / totalMem * 100);
 
 	return 0;
@@ -340,14 +358,20 @@ disk_info(weenfo *info)
 		used  += (buf.f_blocks - buf.f_bfree) * buf.f_bsize;
 	}
 	fclose(mtab);
-#elif defined __NetBSD__
+
+#elif defined __NetBSD__ || defined __FreeBSD__
 
 	int		 mntsize = 0;
-	struct statvfs	*mntbuf;
 	char		 disk_line[256];
 	int		 i;
 
+#if defined __NetBSD__
+	struct statvfs  *mntbuf;
 	mntsize = getmntinfo(&mntbuf, ST_WAIT);
+#else
+	struct statfs   *mntbuf;
+	mntsize = getmntinfo(&mntbuf, MNT_WAIT);
+#endif // netbsd
 
 	for(i = 0; i < mntsize; i++) {
 		if (strncmp(mntbuf[i].f_mntfromname, "/dev/", 5))
@@ -356,6 +380,7 @@ disk_info(weenfo *info)
 		total += mntbuf[i].f_blocks * mntbuf[i].f_bsize;
 		used  += mntbuf[i].f_bfree * mntbuf[i].f_bsize;
 	}
+	used = total - used;
 #endif
 
 	snprintf(info->disk, sizeof(info->disk),
@@ -446,7 +471,7 @@ weenfo_cmd(void *data, struct t_gui_buffer *buffer, int argc,
 
 int
 weechat_plugin_init (struct t_weechat_plugin *plugin,
-                         int argc, char *argv[])
+    int argc, char *argv[])
 {
 	weechat_plugin = plugin;
 
