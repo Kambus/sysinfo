@@ -17,7 +17,7 @@
 
 #include <sys/sysinfo.h>
 
-#elif defined __NetBSD__ || defined __FreeBSD__
+#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
 
 #include <time.h>
 #include <sys/param.h>
@@ -90,16 +90,24 @@ cpu_info(weenfo *info)
 	size_t size = sizeof(cpu);
 	sysctlbyname("machdep.cpu_brand", &cpu, &size, NULL, 0);
 
-#elif defined __FreeBSD__
+	snprintf(info->cpu, sizeof(info->cpu), "CPU: %s", cpu);
+	return 0;
+
+#elif defined __FreeBSD__ || defined __OpenBSD__
 
 	int mid[2] = { CTL_HW, HW_MODEL };
-	int fmhz;
+	int bmhz;
 	size_t size = sizeof(cpu);
 
 	sysctl(mid, 2, &cpu, &size, NULL, 0);
-	size = sizeof(fmhz);
-	sysctlbyname("hw.clockrate", &fmhz, &size, NULL, 0);
-	mhz = (float)fmhz;
+	size = sizeof(bmhz);
+#if defined __OpenBSD__
+	mid[1] = HW_CPUSPEED;
+	sysctl(mid, 2, &bmhz, &size, NULL, 0);
+#else
+	sysctlbyname("hw.clockrate", &bmhz, &size, NULL, 0);
+#endif // obsd
+	mhz = (float)bmhz;
 
 #elif defined __sun && defined __SVR4
 
@@ -155,9 +163,9 @@ uptime_info(weenfo *info)
 
 	struct sysinfo sinfo;
 	sysinfo(&sinfo);
-	btime = (uint64_t)sinfo.uptime;
+	btime = (time_t)sinfo.uptime;
 
-#elif defined __NetBSD__ || defined __FreeBSD__
+#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
 
 	int mid[2] = { CTL_KERN, KERN_BOOTTIME };
 	struct timeval boottime;
@@ -264,11 +272,16 @@ mem_info(weenfo *info)
 	bufMem = sinfo.bufferram;
 	cachedMem = sinfo.?;
 	*/
-#elif defined __NetBSD__
+#elif defined __NetBSD__ || defined __OpenBSD__
 
+#if defined __NetBSD__
 	int mib[] = { CTL_VM, VM_UVMEXP2 };
-	const int pagesize = getpagesize();
 	struct uvmexp_sysctl uvm;
+#else
+	int mib[] = { CTL_VM, VM_UVMEXP };
+	struct uvmexp uvm;
+#endif
+	const int pagesize = getpagesize();
 	size_t size = sizeof(uvm);
 
 	sysctl(mib, 2, &uvm, &size, NULL, 0);
@@ -359,17 +372,17 @@ disk_info(weenfo *info)
 	}
 	fclose(mtab);
 
-#elif defined __NetBSD__ || defined __FreeBSD__
+#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
 
 	int		 mntsize = 0;
 	char		 disk_line[256];
 	int		 i;
 
 #if defined __NetBSD__
-	struct statvfs  *mntbuf;
+	struct statvfs	*mntbuf;
 	mntsize = getmntinfo(&mntbuf, ST_WAIT);
 #else
-	struct statfs   *mntbuf;
+	struct statfs	*mntbuf;
 	mntsize = getmntinfo(&mntbuf, MNT_WAIT);
 #endif // netbsd
 
