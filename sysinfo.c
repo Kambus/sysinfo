@@ -13,11 +13,11 @@
 #include "weechat-plugin.h"
 
 
-#if defined linux
+#ifdef __linux__
 
 #include <sys/sysinfo.h>
 
-#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
+#elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 #include <time.h>
 #include <sys/param.h>
@@ -25,7 +25,7 @@
 #include <sys/ucred.h>
 #include <sys/mount.h>
 
-#elif defined __sun && defined __SVR4
+#elif defined(__sun) && defined(__SVR4)
 
 #include <sys/loadavg.h>
 #include <kstat.h>
@@ -41,7 +41,7 @@
 WEECHAT_PLUGIN_NAME("sysinfo");
 WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.");
 WEECHAT_PLUGIN_AUTHOR("Kambus <kambus@gmail.com>");
-WEECHAT_PLUGIN_VERSION("0.3");
+WEECHAT_PLUGIN_VERSION("0.6");
 WEECHAT_PLUGIN_LICENSE("BSD");
 
 struct t_weechat_plugin *weechat_plugin = NULL;
@@ -63,7 +63,7 @@ cpu_info(weenfo *info)
 	char	cpu[BSIZE];
 	float	mhz = 0;
 
-#if defined linux
+#ifdef __linux__
 
 	FILE	*fp;
 	char	 line[BSIZE];
@@ -85,7 +85,7 @@ cpu_info(weenfo *info)
 
 	cpu[strlen(cpu) - 1] = '\0';
 
-#elif defined __NetBSD__
+#elif defined(__NetBSD__)
 
 	size_t size = sizeof(cpu);
 	sysctlbyname("machdep.cpu_brand", &cpu, &size, NULL, 0);
@@ -93,7 +93,7 @@ cpu_info(weenfo *info)
 	snprintf(info->cpu, sizeof(info->cpu), "CPU: %s", cpu);
 	return 0;
 
-#elif defined __FreeBSD__ || defined __OpenBSD__
+#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 	int mid[2] = { CTL_HW, HW_MODEL };
 	int bmhz;
@@ -101,15 +101,15 @@ cpu_info(weenfo *info)
 
 	sysctl(mid, 2, &cpu, &size, NULL, 0);
 	size = sizeof(bmhz);
-#if defined __OpenBSD__
+#ifdef __OpenBSD__
 	mid[1] = HW_CPUSPEED;
 	sysctl(mid, 2, &bmhz, &size, NULL, 0);
 #else
 	sysctlbyname("hw.clockrate", &bmhz, &size, NULL, 0);
-#endif // obsd
+#endif /* openbsd */
 	mhz = (float)bmhz;
 
-#elif defined __sun && defined __SVR4
+#elif defined(__sun) && defined(__SVR4)
 
 	kstat_ctl_t	*kc;
 	kstat_t		*ksp;
@@ -159,13 +159,13 @@ uptime_info(weenfo *info)
 	time_t btime;
 	uint32_t week, day, hour, min;
 
-#if defined linux
+#ifdef __linux__
 
 	struct sysinfo sinfo;
 	sysinfo(&sinfo);
 	btime = (time_t)sinfo.uptime;
 
-#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
+#elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 	int mid[2] = { CTL_KERN, KERN_BOOTTIME };
 	struct timeval boottime;
@@ -177,7 +177,7 @@ uptime_info(weenfo *info)
 	time(&now);
 	btime = now - boottime.tv_sec;
 
-#elif defined __sun && defined __SVR4
+#elif defined(__sun) && defined(__SVR4)
 
 	kstat_ctl_t	*kc;
 	kstat_t		*ksp;
@@ -237,7 +237,7 @@ mem_info(weenfo *info)
 		 bufMem	    = 0,
 		 cachedMem  = 0;
 
-#if defined linux
+#ifdef __linux__
 	FILE	*fp;
 	char	 buffer[BSIZE];
 
@@ -272,9 +272,9 @@ mem_info(weenfo *info)
 	bufMem = sinfo.bufferram;
 	cachedMem = sinfo.?;
 	*/
-#elif defined __NetBSD__ || defined __OpenBSD__
+#elif defined(__NetBSD__) || defined(__OpenBSD__)
 
-#if defined __NetBSD__
+#ifdef __NetBSD__
 	int mib[] = { CTL_VM, VM_UVMEXP2 };
 	struct uvmexp_sysctl uvm;
 #else
@@ -289,12 +289,16 @@ mem_info(weenfo *info)
 	totalMem = uvm.npages * pagesize >> 10;
 	usedMem = (uvm.npages - uvm.free - uvm.inactive) * pagesize >> 10;
 
-#elif defined __FreeBSD__
+#elif defined(__FreeBSD__) || defined(__DragonFly__)
 
 	const int pagesize = getpagesize();
 	size_t size = sizeof(totalMem);
 
+#ifdef __DragonFly__
+	sysctlbyname("hw.physmem", &totalMem, &size, NULL, 0);
+#else
 	sysctlbyname("hw.realmem", &totalMem, &size, NULL, 0);
+#endif
 	size = sizeof(cachedMem);
 	sysctlbyname("vm.stats.vm.v_cache_count", &cachedMem, &size, NULL, 0);
 	size = sizeof(freeMem);
@@ -307,7 +311,7 @@ mem_info(weenfo *info)
 	totalMem >>= 10;
 	usedMem >>= 10;
 
-#elif defined __sun && __SVR4
+#elif defined(__sun) && defined(__SVR4)
 
 	kstat_ctl_t	*kc;
 	kstat_t		*ksp;
@@ -350,7 +354,7 @@ disk_info(weenfo *info)
 {
 	uint64_t total = 0,
 		 used  = 0;
-#if defined linux
+#ifdef __linux__
 	struct statvfs	buf;
 
 	char	 buffer[BSIZE];
@@ -372,19 +376,19 @@ disk_info(weenfo *info)
 	}
 	fclose(mtab);
 
-#elif defined __NetBSD__ || defined __FreeBSD__ || defined __OpenBSD__
+#elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 	int		 mntsize = 0;
 	char		 disk_line[256];
 	int		 i;
 
-#if defined __NetBSD__
+#ifdef __NetBSD__
 	struct statvfs	*mntbuf;
 	mntsize = getmntinfo(&mntbuf, ST_WAIT);
 #else
 	struct statfs	*mntbuf;
 	mntsize = getmntinfo(&mntbuf, MNT_WAIT);
-#endif // netbsd
+#endif /* netbsd */
 
 	for(i = 0; i < mntsize; i++) {
 		if (strncmp(mntbuf[i].f_mntfromname, "/dev/", 5))
