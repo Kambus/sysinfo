@@ -1,14 +1,17 @@
+.SUFFIXES: .c .o .so
+.PHONY: clean install
+
 CC = gcc
 CFLAGS = -Wall -fPIC
 
+.o.so:
+	$(CC) $(CFLAGS) -shared -o $@ $<
+
 all: sysinfo.so
 
-
 sysinfo.so: sysinfo.o
-	$(CC) $(CFLAGS) -shared -o $@ $^
 
 sysinfo.o: sysinfo.c
-	$(CC) $(CFLAGS) -c -o $@ $^
 
 clean:
 	rm sysinfo.o sysinfo.so

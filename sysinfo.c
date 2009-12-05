@@ -22,6 +22,7 @@
 #include <time.h>
 #include <sys/param.h>
 #include <sys/sysctl.h>
+#include <unistd.h>
 #include <sys/ucred.h>
 #include <sys/mount.h>
 
@@ -96,7 +97,7 @@ cpu_info(weenfo *info)
 #elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 	int mid[2] = { CTL_HW, HW_MODEL };
-	int bmhz;
+	uint64_t bmhz;
 	size_t size = sizeof(cpu);
 
 	sysctl(mid, 2, &cpu, &size, NULL, 0);
@@ -104,8 +105,11 @@ cpu_info(weenfo *info)
 #ifdef __OpenBSD__
 	mid[1] = HW_CPUSPEED;
 	sysctl(mid, 2, &bmhz, &size, NULL, 0);
-#else
+#elif defined(__FreeBSD__)
 	sysctlbyname("hw.clockrate", &bmhz, &size, NULL, 0);
+#elif defined(__DragonFly__)
+	sysctlbyname("hw.tsc_frequency", &bmhz, &size, NULL, 0);
+	bmhz /= 1000000;
 #endif /* openbsd */
 	mhz = (float)bmhz;
 
@@ -379,7 +383,6 @@ disk_info(weenfo *info)
 #elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
 	int		 mntsize = 0;
-	char		 disk_line[256];
 	int		 i;
 
 #ifdef __NetBSD__
@@ -391,7 +394,8 @@ disk_info(weenfo *info)
 #endif /* netbsd */
 
 	for(i = 0; i < mntsize; i++) {
-		if (strncmp(mntbuf[i].f_mntfromname, "/dev/", 5))
+		if (strncmp(mntbuf[i].f_mntfromname, "/dev/", 5) &&
+		    strncmp(mntbuf[i].f_mntfromname, "ROOT", 4))
 			continue;
 
 		total += mntbuf[i].f_blocks * mntbuf[i].f_bsize;
