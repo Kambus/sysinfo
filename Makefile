@@ -11,7 +11,7 @@ all: sysinfo.so
 
 sysinfo.so: sysinfo.o
 
-sysinfo.o: sysinfo.c
+sysinfo.o: sysinfo.c weechat-plugin.h
 
 clean:
 	rm sysinfo.o sysinfo.so
