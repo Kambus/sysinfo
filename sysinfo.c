@@ -57,6 +57,7 @@
 #endif
 
 #define BSIZE 256
+#define LINESIZE 512
 
 /*
 #define add_to_uptime(line, c, i) \
@@ -72,17 +73,17 @@ WEECHAT_PLUGIN_LICENSE("BSD")
 struct t_weechat_plugin *weechat_plugin = NULL;
 
 typedef struct {
-	char cpu[256];
-	char uname[256];
-	char uptime[32];
-	char load[32];
-	char mem[64];
-	char disk[64];
+	char	cpu[256];
+	char	uname[256];
+	char	uptime[32];
+	char	load[32];
+	char	mem[64];
+	char	disk[64];
 } weenfo;
 
 struct line_t {
-	char str[512];
-	int len;
+	char	str[LINESIZE];
+	int	len;
 }; 
 
 /* ------------------------------------------------------------------ */
@@ -133,15 +134,23 @@ cpu_info(weenfo *info)
 
 	sysctl(mid, 2, &cpu, &size, NULL, 0);
 	size = sizeof(bmhz);
+
 #ifdef __OpenBSD__
+
 	mid[1] = HW_CPUSPEED;
 	sysctl(mid, 2, &bmhz, &size, NULL, 0);
+
 #elif defined(__FreeBSD__)
+
 	sysctlbyname("hw.clockrate", &bmhz, &size, NULL, 0);
+
 #elif defined(__DragonFly__)
+
 	sysctlbyname("hw.tsc_frequency", &bmhz, &size, NULL, 0);
 	bmhz /= 1000000;
+
 #endif /* openbsd */
+
 	mhz = (float)bmhz;
 
 #elif defined(__sun) && defined(__SVR4)
@@ -280,11 +289,11 @@ load_info(weenfo *info)
 static int
 mem_info(weenfo *info)
 {
-	uint32_t totalMem   = 0,
-		 freeMem    = 0,
-		 usedMem    = 0,
-		 bufMem	    = 0,
-		 cachedMem  = 0;
+	uint32_t totalMem   = 0;
+	uint32_t freeMem    = 0;
+	uint32_t usedMem    = 0;
+	uint32_t bufMem	    = 0;
+	uint32_t cachedMem  = 0;
 
 #ifdef __linux__
 	FILE	*fp;
@@ -314,13 +323,6 @@ mem_info(weenfo *info)
 
 	usedMem = totalMem - freeMem - bufMem - cachedMem;
 
-	/*
-	struct sysinfo sinfo;
-	totalMem = sinfo.totalram;
-	freeMem = sinfo.freeram;
-	bufMem = sinfo.bufferram;
-	cachedMem = sinfo.?;
-	*/
 #elif defined(__NetBSD__) || defined(__OpenBSD__)
 
 #ifdef __NetBSD__
@@ -463,17 +465,17 @@ disk_info(weenfo *info)
 static void
 add_to_line(struct line_t *line, char *p)
 {       
-	int i;
-	char *lp = line->str + line->len;
+	int	 i;
+	char	*lp = line->str + line->len;
 
-	if (line->len && 3 < 512 - line->len) {
+	if (line->len && 3 < LINESIZE - line->len) {
 		*lp++ = ' '; 
 		*lp++ = '-';
 		*lp++ = ' ';
 		line->len += 3;
 	}
 
-	for (i = 0; *p && i < 512 - line->len; i++) {
+	for (i = 0; *p && i < LINESIZE - line->len; i++) {
 		*lp++ = *p++;
 	}
 	line->len += i;
