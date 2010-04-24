@@ -14,7 +14,7 @@ sysinfo.so: sysinfo.o
 sysinfo.o: sysinfo.c weechat-plugin.h
 
 clean:
-	rm sysinfo.o sysinfo.so
+	-rm -f sysinfo.o sysinfo.so
 
 install:
 	cp -f sysinfo.so ~/.weechat/plugins/

@@ -52,19 +52,22 @@
 #include <sys/loadavg.h>
 #include <kstat.h>
 #include <err.h>
+#include <unistd.h>
 
 #endif
 
 #define BSIZE 256
 
+/*
 #define add_to_uptime(line, c, i) \
-    snprintf(line, sizeof(line), "%s %d%c", line, i, c)
+    snprintf(line + strlen(line), sizeof(line) + strlen(line), " %d%c", i, c)
+*/
 
-WEECHAT_PLUGIN_NAME("sysinfo");
-WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.");
-WEECHAT_PLUGIN_AUTHOR("Kambus <kambus@gmail.com>");
-WEECHAT_PLUGIN_VERSION("0.6");
-WEECHAT_PLUGIN_LICENSE("BSD");
+WEECHAT_PLUGIN_NAME("sysinfo")
+WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.")
+WEECHAT_PLUGIN_AUTHOR("Kambus <kambus@gmail.com>")
+WEECHAT_PLUGIN_VERSION("0.6")
+WEECHAT_PLUGIN_LICENSE("BSD")
 
 struct t_weechat_plugin *weechat_plugin = NULL;
 
@@ -77,9 +80,14 @@ typedef struct {
 	char disk[64];
 } weenfo;
 
+struct line_t {
+	char str[512];
+	int len;
+}; 
+
 /* ------------------------------------------------------------------ */
 
-int
+static int
 cpu_info(weenfo *info)
 {
 	char	cpu[BSIZE];
@@ -98,6 +106,7 @@ cpu_info(weenfo *info)
 		if (strstr(line, "model name")) {
 			pos = strchr(line, ':');
 			strncpy(cpu, pos + 2, sizeof(cpu));
+			cpu[sizeof(cpu) - 1] = '\0';
 		} else if (strstr(line, "cpu MHz")) {
 			pos = strchr(line, ':');
 			mhz = atof(pos + 2);
@@ -105,6 +114,7 @@ cpu_info(weenfo *info)
 	}
 	fclose(fp);
 
+	/* Cut off the line feed. */
 	cpu[strlen(cpu) - 1] = '\0';
 
 #elif defined(__NetBSD__)
@@ -145,13 +155,14 @@ cpu_info(weenfo *info)
 	ksp = kstat_lookup(kc, "cpu_info", 0, "cpu_info0");
 	if (ksp == NULL) err(1, "cpu_info0");
 
+        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
 	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "brand");
 	if (ksd == NULL) err(1, "cpu_info:brand");
-	strncpy(cpu, ksd->value.str, BSIZE);
+	strncpy(cpu, ksd->value.str.addr.ptr, BSIZE);
 
 	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "current_clock_Hz");
 	if (ksd == NULL) err(1, "cpu_info:current_clock_Hz");
-	mhz = (float)ksd->value.ui64 / 1000;
+	mhz = (float)ksd->value.ui64 / 1000000;
 
 	kstat_close(kc);
 #endif
@@ -164,7 +175,7 @@ cpu_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-int
+static int
 uname_info(weenfo *info)
 {
 	struct utsname n;
@@ -178,7 +189,19 @@ uname_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-int
+static void
+add_to_uptime(weenfo *info, char c, int i)
+{
+	char tmp[8];
+
+	snprintf(tmp, sizeof(tmp), " %d%c", i, c);
+	strncat(info->uptime, tmp, sizeof(info->uptime) - strlen(tmp));
+	info->uptime[sizeof(info->uptime) - 1] = '\0';
+}
+
+/* ------------------------------------------------------------------ */
+
+static int
 uptime_info(weenfo *info)
 {
 	time_t btime;
@@ -213,6 +236,7 @@ uptime_info(weenfo *info)
 
 	ksp = kstat_lookup(kc, "unix", 0, "system_misc");
 	if (ksp == NULL) err(1, "system_misc");
+        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
 	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "boot_time");
 	if (ksp == NULL) err(1, "boot_time");
 
@@ -229,17 +253,17 @@ uptime_info(weenfo *info)
 
 	strncpy(info->uptime, "Uptime:", sizeof(info->uptime));
 
-	if (week) add_to_uptime(info->uptime, 'w', week);
-	if (day)  add_to_uptime(info->uptime, 'd', day);
-	if (hour) add_to_uptime(info->uptime, 'h', hour);
-	if (min)  add_to_uptime(info->uptime, 'm', min);
+	if (week) add_to_uptime(info, 'w', week);
+	if (day)  add_to_uptime(info, 'd', day);
+	if (hour) add_to_uptime(info, 'h', hour);
+	if (min)  add_to_uptime(info, 'm', min);
 
 	return 0;
 }
 
 /* ------------------------------------------------------------------ */
 
-int
+static int
 load_info(weenfo *info)
 {
 	double lavg[3];
@@ -253,7 +277,7 @@ load_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-int
+static int
 mem_info(weenfo *info)
 {
 	uint32_t totalMem   = 0,
@@ -351,15 +375,16 @@ mem_info(weenfo *info)
 	ksp = kstat_lookup(kc, "unix", 0, "system_pages");
 	if (ksp == NULL) err(1, "system_pages");
 
+        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
 	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "physmem");
 	if (ksd == NULL) err(1, "physmem");
 
-	totalMem = ksd->value.ui64 * pagesize;
+	totalMem = ksd->value.ui64 * pagesize >> 10;
 
 	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "availrmem");
 	if (ksd == NULL) err(1, "availrmem");
 
-	usedMem = ksd->value.ui64 * pagesize;
+	usedMem = ksd->value.ui64 * pagesize >> 10;
 
 	kstat_close(kc);
 #endif
@@ -374,7 +399,7 @@ mem_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-int
+static int
 disk_info(weenfo *info)
 {
 	uint64_t total = 0,
@@ -435,21 +460,29 @@ disk_info(weenfo *info)
 
 /* ------------------------------------------------------------------ */
 
-void
-add_to_line(char *line, char *info)
-{
-	if(line[0] == '\0')
-		strncpy(line, info, 512);
-	else {
-		strncat(line, " - ", 512 - 3);
-		strncat(line, info, 512 - strlen(info));
+static void
+add_to_line(struct line_t *line, char *p)
+{       
+	int i;
+	char *lp = line->str + line->len;
+
+	if (line->len && 3 < 512 - line->len) {
+		*lp++ = ' '; 
+		*lp++ = '-';
+		*lp++ = ' ';
+		line->len += 3;
 	}
+
+	for (i = 0; *p && i < 512 - line->len; i++) {
+		*lp++ = *p++;
+	}
+	line->len += i;
 }
 
 /* ------------------------------------------------------------------ */
 
-int
-get_weenfo(char *line, char **argv, int argc)
+static int
+get_weenfo(struct line_t *line, char **argv, int argc)
 {
 	weenfo info;
 
@@ -469,42 +502,40 @@ get_weenfo(char *line, char **argv, int argc)
 		add_to_line(line, info.disk);
 	} else if (!strcmp(argv[1], "uname") || !strcmp(argv[1], "os")) {
 		uname_info(&info);
-		strncpy(line, info.uname, 512);
+		add_to_line(line, info.uname);
 	} else if (!strcmp(argv[1], "cpu")) {
 		cpu_info(&info);
-		strncpy(line, info.cpu, 512);
+		add_to_line(line, info.cpu);
 	} else if (!strcmp(argv[1], "mem")) {
 		mem_info(&info);
-		strncpy(line, info.mem, 512);
+		add_to_line(line, info.mem);
 	} else if (!strcmp(argv[1], "disk")) {
 		disk_info(&info);
-		strncpy(line, info.disk, 512);
+		add_to_line(line, info.disk);
 	} else if (!strcmp(argv[1], "uptime")) {
 		uptime_info(&info);
-		strncpy(line, info.uptime, 512);
+		add_to_line(line, info.uptime);
 	} else if (!strcmp(argv[1], "load")) {
 		load_info(&info);
-		strncpy(line, info.load, 512);
-	} else
-		line[0] = '\0';
+		add_to_line(line, info.load);
+	}
 
 	return 0;
 }
 
 /* ------------------------------------------------------------------ */
 
-int
+static int
 weenfo_cmd(void *data, struct t_gui_buffer *buffer, int argc,
     char **argv, char **argv_eol)
 {
-	char line[512];
-	line[0] = '\0';
+	struct line_t line = {"\0", 0};
 
-	get_weenfo(line, argv, argc);
+	get_weenfo(&line, argv, argc);
 	if (!strcmp(argv[0], "/sys"))
-		weechat_command(buffer, line);
+		weechat_command(buffer, line.str);
 	else if (!strcmp(argv[0], "/esys"))
-		weechat_printf (buffer, "%s", line);
+		weechat_printf (buffer, "%s", line.str);
 
 	return WEECHAT_RC_OK;
 }
