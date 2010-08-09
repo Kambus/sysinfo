@@ -67,7 +67,7 @@
 WEECHAT_PLUGIN_NAME("sysinfo")
 WEECHAT_PLUGIN_DESCRIPTION("WeeChat sysinfo plugin.")
 WEECHAT_PLUGIN_AUTHOR("Kambus <kambus@gmail.com>")
-WEECHAT_PLUGIN_VERSION("0.6")
+WEECHAT_PLUGIN_VERSION("0.7")
 WEECHAT_PLUGIN_LICENSE("BSD")
 
 struct t_weechat_plugin *weechat_plugin = NULL;
