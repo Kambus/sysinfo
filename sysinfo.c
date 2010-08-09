@@ -86,8 +86,6 @@ struct line_t {
 	int	len;
 }; 
 
-/* ------------------------------------------------------------------ */
-
 static int
 cpu_info(weenfo *info)
 {
@@ -161,16 +159,18 @@ cpu_info(weenfo *info)
 
 	kc = kstat_open();
 
-	ksp = kstat_lookup(kc, "cpu_info", 0, "cpu_info0");
-	if (ksp == NULL) err(1, "cpu_info0");
+	if ((ksp = kstat_lookup(kc, "cpu_info", 0, "cpu_info0")) == NULL)
+		err(1, "cpu_info0");
+	if (kstat_read(kc, ksp, NULL) == -1)
+		err(1, "kstat_read\n");
+	if ((ksd = (kstat_named_t *)kstat_data_lookup(ksp, "brand")) == NULL)
+		err(1, "cpu_info:brand");
 
-        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
-	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "brand");
-	if (ksd == NULL) err(1, "cpu_info:brand");
 	strncpy(cpu, ksd->value.str.addr.ptr, BSIZE);
 
-	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "current_clock_Hz");
-	if (ksd == NULL) err(1, "cpu_info:current_clock_Hz");
+	if ((ksd = (kstat_named_t *)kstat_data_lookup(ksp,
+	    "current_clock_Hz")) == NULL)
+		err(1, "cpu_info:current_clock_Hz");
 	mhz = (float)ksd->value.ui64 / 1000000;
 
 	kstat_close(kc);
@@ -181,8 +181,6 @@ cpu_info(weenfo *info)
 
 	return 0;
 }
-
-/* ------------------------------------------------------------------ */
 
 static int
 uname_info(weenfo *info)
@@ -196,8 +194,6 @@ uname_info(weenfo *info)
 	return 0;
 }
 
-/* ------------------------------------------------------------------ */
-
 static void
 add_to_uptime(weenfo *info, char c, int i)
 {
@@ -207,8 +203,6 @@ add_to_uptime(weenfo *info, char c, int i)
 	strncat(info->uptime, tmp, sizeof(info->uptime) - strlen(tmp));
 	info->uptime[sizeof(info->uptime) - 1] = '\0';
 }
-
-/* ------------------------------------------------------------------ */
 
 static int
 uptime_info(weenfo *info)
@@ -243,11 +237,12 @@ uptime_info(weenfo *info)
 
 	kc = kstat_open();
 
-	ksp = kstat_lookup(kc, "unix", 0, "system_misc");
-	if (ksp == NULL) err(1, "system_misc");
-        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
-	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "boot_time");
-	if (ksp == NULL) err(1, "boot_time");
+	if ((ksp = kstat_lookup(kc, "unix", 0, "system_misc")) == NULL)
+		err(1, "system_misc");
+	if (kstat_read(kc, ksp, NULL) == -1)
+		err(1, "kstat_read\n");
+	if ((ksd = (kstat_named_t *)kstat_data_lookup(ksp, "boot_time")) == NULL)
+		err(1, "boot_time");
 
 	time(&now);
 	btime = now - ksd->value.ui64;
@@ -270,8 +265,6 @@ uptime_info(weenfo *info)
 	return 0;
 }
 
-/* ------------------------------------------------------------------ */
-
 static int
 load_info(weenfo *info)
 {
@@ -283,8 +276,6 @@ load_info(weenfo *info)
 
 	return 0;
 }
-
-/* ------------------------------------------------------------------ */
 
 static int
 mem_info(weenfo *info)
@@ -374,17 +365,17 @@ mem_info(weenfo *info)
 
 	pagesize = sysconf(_SC_PAGE_SIZE);
 
-	ksp = kstat_lookup(kc, "unix", 0, "system_pages");
-	if (ksp == NULL) err(1, "system_pages");
-
-        if (kstat_read(kc, ksp, NULL) == -1) err(1, "kstat_read\n");
-	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "physmem");
-	if (ksd == NULL) err(1, "physmem");
+	if ((ksp = kstat_lookup(kc, "unix", 0, "system_pages")) == NULL)
+		err(1, "system_pages");
+	if (kstat_read(kc, ksp, NULL) == -1)
+		err(1, "kstat_read\n");
+	if ((ksd = (kstat_named_t *)kstat_data_lookup(ksp, "physmem")) == NULL)
+		err(1, "physmem");
 
 	totalMem = ksd->value.ui64 * pagesize >> 10;
 
-	ksd = (kstat_named_t *)kstat_data_lookup(ksp, "availrmem");
-	if (ksd == NULL) err(1, "availrmem");
+	if ((ksd = (kstat_named_t *)kstat_data_lookup(ksp, "availrmem")) == NULL)
+		err(1, "availrmem");
 
 	usedMem = ksd->value.ui64 * pagesize >> 10;
 
@@ -398,8 +389,6 @@ mem_info(weenfo *info)
 
 	return 0;
 }
-
-/* ------------------------------------------------------------------ */
 
 static int
 disk_info(weenfo *info)
@@ -460,11 +449,9 @@ disk_info(weenfo *info)
 	return 0;
 }
 
-/* ------------------------------------------------------------------ */
-
 static void
 add_to_line(struct line_t *line, char *p)
-{       
+{
 	int	 i;
 	char	*lp = line->str + line->len;
 
@@ -480,8 +467,6 @@ add_to_line(struct line_t *line, char *p)
 	}
 	line->len += i;
 }
-
-/* ------------------------------------------------------------------ */
 
 static int
 get_weenfo(struct line_t *line, char **argv, int argc)
@@ -525,8 +510,6 @@ get_weenfo(struct line_t *line, char **argv, int argc)
 	return 0;
 }
 
-/* ------------------------------------------------------------------ */
-
 static int
 weenfo_cmd(void *data, struct t_gui_buffer *buffer, int argc,
     char **argv, char **argv_eol)
@@ -541,8 +524,6 @@ weenfo_cmd(void *data, struct t_gui_buffer *buffer, int argc,
 
 	return WEECHAT_RC_OK;
 }
-
-/* ------------------------------------------------------------------ */
 
 int
 weechat_plugin_init (struct t_weechat_plugin *plugin,
@@ -568,3 +549,5 @@ weechat_plugin_init (struct t_weechat_plugin *plugin,
 
 	return WEECHAT_RC_OK;
 }
+
+/* vim: set foldmethod=expr foldexpr=MyCFL(): */

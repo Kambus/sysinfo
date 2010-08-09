@@ -1,22 +1,26 @@
 /*
- * Copyright (c) 2003-2010 by FlashCode <flashcode@flashtux.org>
- * See README for License detail, AUTHORS for developers list.
+ * Copyright (C) 2003-2010 Sebastien Helleu <flashcode@flashtux.org>
  *
- * This program is free software; you can redistribute it and/or modify
+ * This file is part of WeeChat, the extensible chat client.
+ *
+ * WeeChat is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
+ * WeeChat is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with WeeChat.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* This header is designed to be distributed with WeeChat plugins */
+/*
+ * weechat-plugin.h: this header is designed to be distributed with
+ *                   WeeChat plugins, in order to compile them
+ */
 
 #ifndef __WEECHAT_WEECHAT_PLUGIN_H
 #define __WEECHAT_WEECHAT_PLUGIN_H 1
@@ -30,7 +34,9 @@ struct t_gui_bar;
 struct t_gui_bar_item;
 struct t_gui_completion;
 struct t_infolist;
+struct t_infolist_item;
 struct t_weelist;
+struct t_hashtable;
 struct timeval;
 
 /*
@@ -39,7 +45,7 @@ struct timeval;
  */
 
 /* API version (used to check that plugin has same API and can be loaded) */
-#define WEECHAT_PLUGIN_API_VERSION "20100302-01"
+#define WEECHAT_PLUGIN_API_VERSION "20100717-01"
 
 /* macros for defining plugin infos */
 #define WEECHAT_PLUGIN_NAME(__name)                                     \
@@ -89,6 +95,13 @@ struct timeval;
 #define WEECHAT_LIST_POS_BEGINNING                  "beginning"
 #define WEECHAT_LIST_POS_END                        "end"
 
+/* type for keys and values in hashtable */
+#define WEECHAT_HASHTABLE_INTEGER                   "integer"
+#define WEECHAT_HASHTABLE_STRING                    "string"
+#define WEECHAT_HASHTABLE_POINTER                   "pointer"
+#define WEECHAT_HASHTABLE_BUFFER                    "buffer"
+#define WEECHAT_HASHTABLE_TIME                      "time"
+
 /* buffer hotlist */
 #define WEECHAT_HOTLIST_LOW                         "0"
 #define WEECHAT_HOTLIST_MESSAGE                     "1"
@@ -134,7 +147,11 @@ struct t_weechat_plugin
     struct t_weechat_plugin *prev_plugin; /* link to previous plugin        */
     struct t_weechat_plugin *next_plugin; /* link to next plugin            */
     
-    /* plugin functions (API) */
+    /*
+     * plugin functions (API)
+     * WeeChat developers: if you add functions in API, update value of
+     * constant WEECHAT_PLUGIN_API_VERSION
+     */
     
     /* plugins */
     const char *(*plugin_get_name) (struct t_weechat_plugin *plugin);
@@ -157,6 +174,7 @@ struct t_weechat_plugin
                          int case_sensitive);
     char *(*string_replace) (const char *string, const char *search,
                              const char *replace);
+    char *(*string_expand_home) (const char *path);
     char *(*string_remove_quotes) (const char *string, const char *quotes);
     char *(*string_strip) (const char *string, int left, int right,
                            const char *chars);
@@ -231,6 +249,36 @@ struct t_weechat_plugin
                          struct t_weelist_item *item);
     void (*list_remove_all) (struct t_weelist *weelist);
     void (*list_free) (struct t_weelist *weelist);
+    
+    /* hash tables */
+    struct t_hashtable *(*hashtable_new) (int size,
+                                          const char *type_keys,
+                                          const char *type_values,
+                                          unsigned int (*callback_hash_key)(struct t_hashtable *hashtable,
+                                                                            const void *key),
+                                          int (*callback_keycmp)(struct t_hashtable *hashtable,
+                                                                 const void *key1,
+                                                                 const void *key2));
+    int (*hashtable_set_with_size) (struct t_hashtable *hashtable,
+                                    void *key, int key_size,
+                                    void *value, int value_size);
+    int (*hashtable_set) (struct t_hashtable *hashtable, void *key,
+                          void *value);
+    void *(*hashtable_get) (struct t_hashtable *hashtable, const void *key);
+    void (*hashtable_map) (struct t_hashtable *hashtable,
+                           void (*callback_map) (void *data,
+                                                 struct t_hashtable *hashtable,
+                                                 const void *key,
+                                                 const void *value),
+                           void *callback_map_data);
+    int (*hashtable_get_integer) (struct t_hashtable *hashtable,
+                                  const char *property);
+    int (*hashtable_add_to_infolist) (struct t_hashtable *hashtable,
+                                      struct t_infolist_item *infolist_item,
+                                      const char *prefix);
+    void (*hashtable_remove) (struct t_hashtable *hashtable, const void *key);
+    void (*hashtable_remove_all) (struct t_hashtable *hashtable);
+    void (*hashtable_free) (struct t_hashtable *hashtable);
     
     /* config files */
     struct t_config_file *(*config_new) (struct t_weechat_plugin *plugin,
@@ -644,8 +692,6 @@ struct t_weechat_plugin
                                               struct t_infolist *infolist),
                          void *callback_read_data);
     void (*upgrade_close) (struct t_upgrade_file *upgrade_file);
-    
-    /* WeeChat developers: ALWAYS add new functions at the end */
 };
 
 extern int weechat_plugin_init (struct t_weechat_plugin *plugin,
@@ -697,6 +743,8 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->string_match(__string, __mask, __case_sensitive)
 #define weechat_string_replace(__string, __search, __replace)           \
     weechat_plugin->string_replace(__string, __search, __replace)
+#define weechat_string_expand_home(__path)      \
+    weechat_plugin->string_expand_home(__path)
 #define weechat_string_remove_quotes(__string, __quotes)                \
     weechat_plugin->string_remove_quotes(__string, __quotes)
 #define weechat_string_strip(__string, __left, __right, __chars)        \
@@ -819,6 +867,36 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->list_remove_all(__list)
 #define weechat_list_free(__list)                                       \
     weechat_plugin->list_free(__list)
+
+/* hash tables */
+#define weechat_hashtable_new(__size, __type_keys, __type_values,       \
+                              __hash_key_cb, __keycmp_cb)               \
+    weechat_plugin->hashtable_new(__size, __type_keys, __type_values,   \
+                                  __hash_key_cb, __keycmp_cb)
+#define weechat_hashtable_set_with_size(__hashtable, __key, __key_size, \
+                                        __value, __value_size)          \
+    weechat_plugin->hashtable_set_with_size(__hashtable, __key,         \
+                                            __key_size, __value,        \
+                                            __value_size)
+#define weechat_hashtable_set(__hashtable, __key, __value)              \
+    weechat_plugin->hashtable_set(__hashtable, __key, __value)
+#define weechat_hashtable_get(__hashtable, __key)                       \
+    weechat_plugin->hashtable_get(__hashtable, __key)
+#define weechat_hashtable_map(__hashtable, __cb_map, __cb_map_data)     \
+    weechat_plugin->hashtable_map(__hashtable, __cb_map, __cb_map_data)
+#define weechat_hashtable_get_integer(__hashtable, __property)          \
+    weechat_plugin->hashtable_get_integer(__hashtable, __property)
+#define weechat_hashtable_add_to_infolist(__hashtable, __infolist_item, \
+                                          __prefix)                     \
+    weechat_plugin->hashtable_add_to_infolist(__hashtable,              \
+                                              __infolist_item,          \
+                                              __prefix)
+#define weechat_hashtable_remove(__hashtable, __key)                    \
+    weechat_plugin->hashtable_remove(__hashtable, __key)
+#define weechat_hashtable_remove_all(__hashtable)                       \
+    weechat_plugin->hashtable_remove_all(__hashtable)
+#define weechat_hashtable_free(__hashtable)                             \
+    weechat_plugin->hashtable_free(__hashtable)
 
 /* config files */
 #define weechat_config_new(__name, __callback_reload,                   \
@@ -1221,4 +1299,4 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
 #define weechat_upgrade_close(__upgrade_file)                           \
     weechat_plugin->upgrade_close(__upgrade_file)
 
-#endif /* weechat-plugin.h */
+#endif /* __WEECHAT_WEECHAT_PLUGIN_H */
