@@ -37,6 +37,7 @@
 #ifdef __linux__
 
 #include <sys/sysinfo.h>
+#include <mntent.h>
 
 #elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 
@@ -396,22 +397,15 @@ disk_info(weenfo *info)
 	uint64_t total = 0,
 		 used  = 0;
 #ifdef __linux__
-	struct statvfs	buf;
+	FILE		*mtab;
+	struct mntent	*mnt;
+	struct statvfs	 buf;
 
-	char	 buffer[BSIZE];
-	char	 path[BSIZE];
-	char	*pos = NULL;
-
-	FILE	*mtab;
-
-	if ((mtab = fopen("/etc/mtab", "r")) == NULL)
+	if ((mtab = setmntent("/etc/mtab", "r")) == NULL)
 		return 1;
 
-	while (fgets(buffer, BSIZE, mtab) != NULL) {
-		pos = strchr(buffer, ' ');
-		sscanf(pos + 1, "%s ", path);
-
-		statvfs(path, &buf);
+	while ((mnt = getmntent(mtab)) != NULL) {
+		statvfs(mnt->mnt_dir, &buf);
 		total +=  buf.f_blocks * buf.f_bsize;
 		used  += (buf.f_blocks - buf.f_bfree) * buf.f_bsize;
 	}
