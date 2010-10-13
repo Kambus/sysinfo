@@ -84,7 +84,7 @@ typedef struct {
 struct line_t {
 	char	str[LINESIZE];
 	int	len;
-}; 
+};
 
 static int
 cpu_info(weenfo *info)
@@ -456,7 +456,7 @@ add_to_line(struct line_t *line, char *p)
 	char	*lp = line->str + line->len;
 
 	if (line->len && 3 < LINESIZE - line->len) {
-		*lp++ = ' '; 
+		*lp++ = ' ';
 		*lp++ = '-';
 		*lp++ = ' ';
 		line->len += 3;
