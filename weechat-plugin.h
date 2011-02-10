@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2010 Sebastien Helleu <flashcode@flashtux.org>
+ * Copyright (C) 2003-2011 Sebastien Helleu <flashcode@flashtux.org>
  *
  * This file is part of WeeChat, the extensible chat client.
  *
@@ -45,7 +45,7 @@ struct timeval;
  */
 
 /* API version (used to check that plugin has same API and can be loaded) */
-#define WEECHAT_PLUGIN_API_VERSION "20100717-01"
+#define WEECHAT_PLUGIN_API_VERSION "20110102-01"
 
 /* macros for defining plugin infos */
 #define WEECHAT_PLUGIN_NAME(__name)                                     \
@@ -180,6 +180,7 @@ struct t_weechat_plugin
                            const char *chars);
     int (*string_has_highlight) (const char *string,
                                  const char *highlight_words);
+    int (*string_has_highlight_regex) (const char *string, const char *regex);
     char *(*string_mask_to_regex) (const char *mask);
     char **(*string_split) (const char *string, const char *separators,
                             int keep_eol, int num_items_max, int *num_items);
@@ -188,7 +189,7 @@ struct t_weechat_plugin
                                              const char *separator);
     char **(*string_split_command) (const char *command, char separator);
     void (*string_free_split_command) (char **split_command);
-    char *(*string_format_size) (unsigned long size);
+    char *(*string_format_size) (unsigned long long size);
     char *(*string_remove_color) (const char *string, const char *replacement);
     void (*string_encode_base64) (const char *from, int length, char *to);
     int (*string_decode_base64) (const char *from, char *to);
@@ -236,8 +237,12 @@ struct t_weechat_plugin
                                         void *user_data);
     struct t_weelist_item *(*list_search) (struct t_weelist *weelist,
                                            const char *data);
+    int (*list_search_pos) (struct t_weelist *weelist,
+                            const char *data);
     struct t_weelist_item *(*list_casesearch) (struct t_weelist *weelist,
                                                const char *data);
+    int (*list_casesearch_pos) (struct t_weelist *weelist,
+                                const char *data);
     struct t_weelist_item *(*list_get) (struct t_weelist *weelist,
                                         int position);
     void (*list_set) (struct t_weelist_item *item, const char *value);
@@ -260,11 +265,12 @@ struct t_weechat_plugin
                                                                  const void *key1,
                                                                  const void *key2));
     int (*hashtable_set_with_size) (struct t_hashtable *hashtable,
-                                    void *key, int key_size,
-                                    void *value, int value_size);
-    int (*hashtable_set) (struct t_hashtable *hashtable, void *key,
-                          void *value);
+                                    const void *key, int key_size,
+                                    const void *value, int value_size);
+    int (*hashtable_set) (struct t_hashtable *hashtable, const void *key,
+                          const void *value);
     void *(*hashtable_get) (struct t_hashtable *hashtable, const void *key);
+    int (*hashtable_has_key) (struct t_hashtable *hashtable, const void *key);
     void (*hashtable_map) (struct t_hashtable *hashtable,
                            void (*callback_map) (void *data,
                                                  struct t_hashtable *hashtable,
@@ -273,6 +279,11 @@ struct t_weechat_plugin
                            void *callback_map_data);
     int (*hashtable_get_integer) (struct t_hashtable *hashtable,
                                   const char *property);
+    const char *(*hashtable_get_string) (struct t_hashtable *hashtable,
+                                         const char *property);
+    void (*hashtable_set_pointer) (struct t_hashtable *hashtable,
+                                   const char *property,
+                                   void *pointer);
     int (*hashtable_add_to_infolist) (struct t_hashtable *hashtable,
                                       struct t_infolist_item *infolist_item,
                                       const char *prefix);
@@ -484,6 +495,14 @@ struct t_weechat_plugin
                                    void *callback_data);
     void (*hook_signal_send) (const char *signal, const char *type_data,
                               void *signal_data);
+    struct t_hook *(*hook_hsignal) (struct t_weechat_plugin *plugin,
+                                    const char *signal,
+                                    int (*callback)(void *data,
+                                                    const char *signal,
+                                                    struct t_hashtable *hashtable),
+                                    void *callback_data);
+    void (*hook_hsignal_send) (const char *signal,
+                               struct t_hashtable *hashtable);
     struct t_hook *(*hook_config) (struct t_weechat_plugin *plugin,
                                    const char *option,
                                    int (*callback)(void *data,
@@ -498,6 +517,8 @@ struct t_weechat_plugin
                                                        struct t_gui_buffer *buffer,
                                                        struct t_gui_completion *completion),
                                        void *callback_data);
+    const char *(*hook_completion_get_string) (struct t_gui_completion *completion,
+                                               const char *property);
     void (*hook_completion_list_add) (struct t_gui_completion *completion,
                                       const char *word,
                                       int nick_completion,
@@ -521,6 +542,15 @@ struct t_weechat_plugin
                                                          const char *info_name,
                                                          const char *arguments),
                                  void *callback_data);
+    struct t_hook *(*hook_info_hashtable) (struct t_weechat_plugin *plugin,
+                                           const char *info_name,
+                                           const char *description,
+                                           const char *args_description,
+                                           const char *output_description,
+                                           struct t_hashtable *(*callback)(void *data,
+                                                                           const char *info_name,
+                                                                           struct t_hashtable *hashtable),
+                                           void *callback_data);
     struct t_hook *(*hook_infolist) (struct t_weechat_plugin *plugin,
                                      const char *infolist_name,
                                      const char *description,
@@ -597,6 +627,30 @@ struct t_weechat_plugin
     void (*nicklist_remove_nick) (struct t_gui_buffer *buffer,
                                   struct t_gui_nick *nick);
     void (*nicklist_remove_all) (struct t_gui_buffer *buffer);
+    int (*nicklist_group_get_integer) (struct t_gui_buffer *buffer,
+                                       struct t_gui_nick_group *group,
+                                       const char *property);
+    const char *(*nicklist_group_get_string) (struct t_gui_buffer *buffer,
+                                              struct t_gui_nick_group *group,
+                                              const char *property);
+    void *(*nicklist_group_get_pointer) (struct t_gui_buffer *buffer,
+                                         struct t_gui_nick_group *group,
+                                         const char *property);
+    void (*nicklist_group_set) (struct t_gui_buffer *buffer,
+                                struct t_gui_nick_group *group,
+                                const char *property, const char *value);
+    int (*nicklist_nick_get_integer) (struct t_gui_buffer *buffer,
+                                      struct t_gui_nick *nick,
+                                      const char *property);
+    const char *(*nicklist_nick_get_string) (struct t_gui_buffer *buffer,
+                                             struct t_gui_nick *nick,
+                                             const char *property);
+    void *(*nicklist_nick_get_pointer) (struct t_gui_buffer *buffer,
+                                        struct t_gui_nick *nick,
+                                        const char *property);
+    void (*nicklist_nick_set) (struct t_gui_buffer *buffer,
+                               struct t_gui_nick *nick,
+                               const char *property, const char *value);
     
     /* bars */
     struct t_gui_bar_item *(*bar_item_search) (const char *name);
@@ -643,6 +697,9 @@ struct t_weechat_plugin
     const char *(*info_get) (struct t_weechat_plugin *plugin,
                              const char *info_name,
                              const char *arguments);
+    struct t_hashtable *(*info_get_hashtable) (struct t_weechat_plugin *plugin,
+                                               const char *info_name,
+                                               struct t_hashtable *hashtable);
     
     /* infolists */
     struct t_infolist *(*infolist_new) ();
@@ -751,6 +808,8 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->string_strip(__string, __left, __right, __chars)
 #define weechat_string_has_highlight(__string, __highlight_words)       \
     weechat_plugin->string_has_highlight(__string, __highlight_words)
+#define weechat_string_has_highlight_regex(__string, __regex)           \
+    weechat_plugin->string_has_highlight_regex(__string, __regex)
 #define weechat_string_mask_to_regex(__mask)                            \
     weechat_plugin->string_mask_to_regex(__mask)
 #define weechat_string_split(__string, __separator, __eol, __max,       \
@@ -847,8 +906,12 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->list_add(__list, __string, __where, __user_data)
 #define weechat_list_search(__list, __string)                           \
     weechat_plugin->list_search(__list, __string)
+#define weechat_list_search_pos(__list, __string)                       \
+    weechat_plugin->list_search_pos(__list, __string)
 #define weechat_list_casesearch(__list, __string)                       \
     weechat_plugin->list_casesearch(__list, __string)
+#define weechat_list_casesearch_pos(__list, __string)                   \
+    weechat_plugin->list_casesearch_pos(__list, __string)
 #define weechat_list_get(__list, __index)                               \
     weechat_plugin->list_get(__list, __index)
 #define weechat_list_set(__item, __value)                               \
@@ -882,10 +945,18 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->hashtable_set(__hashtable, __key, __value)
 #define weechat_hashtable_get(__hashtable, __key)                       \
     weechat_plugin->hashtable_get(__hashtable, __key)
+#define weechat_hashtable_has_key(__hashtable, __key)                   \
+    weechat_plugin->hashtable_has_key(__hashtable, __key)
 #define weechat_hashtable_map(__hashtable, __cb_map, __cb_map_data)     \
     weechat_plugin->hashtable_map(__hashtable, __cb_map, __cb_map_data)
 #define weechat_hashtable_get_integer(__hashtable, __property)          \
     weechat_plugin->hashtable_get_integer(__hashtable, __property)
+#define weechat_hashtable_get_string(__hashtable, __property)           \
+    weechat_plugin->hashtable_get_string(__hashtable, __property)
+#define weechat_hashtable_set_pointer(__hashtable, __property,          \
+                                      __pointer)                        \
+    weechat_plugin->hashtable_set_pointer(__hashtable, __property,      \
+                                          __pointer)
 #define weechat_hashtable_add_to_infolist(__hashtable, __infolist_item, \
                                           __prefix)                     \
     weechat_plugin->hashtable_add_to_infolist(__hashtable,              \
@@ -1093,6 +1164,11 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
 #define weechat_hook_signal_send(__signal, __type_data, __signal_data)  \
     weechat_plugin->hook_signal_send(__signal, __type_data,             \
                                      __signal_data)
+#define weechat_hook_hsignal(__signal, __callback, __data)              \
+    weechat_plugin->hook_hsignal(weechat_plugin, __signal, __callback,  \
+                                __data)
+#define weechat_hook_hsignal_send(__signal, __hashtable)                \
+    weechat_plugin->hook_hsignal_send(__signal, __hashtable)
 #define weechat_hook_config(__option, __callback, __data)               \
     weechat_plugin->hook_config(weechat_plugin, __option, __callback,   \
                                 __data)
@@ -1100,6 +1176,9 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
                                 __callback, __data)                     \
     weechat_plugin->hook_completion(weechat_plugin, __completion,       \
                                     __description, __callback, __data)
+#define weechat_hook_completion_get_string(__completion, __property)    \
+    weechat_plugin->hook_completion_get_string(__completion,            \
+                                               __property)
 #define weechat_hook_completion_list_add(__completion, __word,          \
                                          __nick_completion, __where)    \
     weechat_plugin->hook_completion_list_add(__completion, __word,      \
@@ -1117,6 +1196,16 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->hook_info(weechat_plugin, __info_name,              \
                               __description, __args_description,        \
                               __callback, __data)
+#define weechat_hook_info_hashtable(__info_name, __description,         \
+                                    __args_description,                 \
+                                    __output_description,               \
+                                    __callback,                         \
+                                    __data)                             \
+    weechat_plugin->hook_info_hashtable(weechat_plugin, __info_name,    \
+                                        __description,                  \
+                                        __args_description,             \
+                                        __output_description,           \
+                                        __callback, __data)
 #define weechat_hook_infolist(__infolist_name, __description,           \
                               __pointer_description,                    \
                               __args_description, __callback, __data)   \
@@ -1197,6 +1286,35 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
     weechat_plugin->nicklist_remove_nick(__buffer, __nick)
 #define weechat_nicklist_remove_all(__buffer)                           \
     weechat_plugin->nicklist_remove_all(__buffer)
+#define weechat_nicklist_group_get_integer(__buffer, __group,           \
+                                           __property)                  \
+    weechat_plugin->nicklist_group_get_integer(__buffer, __group,       \
+                                               __property)
+#define weechat_nicklist_group_get_string(__buffer, __group,            \
+                                          __property)                   \
+    weechat_plugin->nicklist_group_get_string(__buffer, __group,        \
+                                              __property)
+#define weechat_nicklist_group_get_pointer(__buffer, __group,           \
+                                           __property)                  \
+    weechat_plugin->nicklist_group_get_pointer(__buffer, __group,       \
+                                               __property)
+#define weechat_nicklist_group_set(__buffer, __group, __property,       \
+                                   __value)                             \
+    weechat_plugin->nicklist_group_set(__buffer, __group, __property,   \
+                                       __value)
+#define weechat_nicklist_nick_get_integer(__buffer, __nick, __property) \
+    weechat_plugin->nicklist_nick_get_integer(__buffer, __nick,         \
+                                              __property)
+#define weechat_nicklist_nick_get_string(__buffer, __nick, __property)  \
+    weechat_plugin->nicklist_nick_get_string(__buffer, __nick,          \
+                                             __property)
+#define weechat_nicklist_nick_get_pointer(__buffer, __nick, __property) \
+    weechat_plugin->nicklist_nick_get_pointer(__buffer, __nick,         \
+                                              __property)
+#define weechat_nicklist_nick_set(__buffer, __nick, __property,         \
+                                  __value)                              \
+    weechat_plugin->nicklist_nick_set(__buffer, __nick, __property,     \
+                                      __value)
 
 /* bars */
 #define weechat_bar_item_search(__name)                                 \
@@ -1243,6 +1361,9 @@ extern int weechat_plugin_end (struct t_weechat_plugin *plugin);
 /* infos */
 #define weechat_info_get(__info_name, __arguments)                      \
     weechat_plugin->info_get(weechat_plugin, __info_name, __arguments)
+#define weechat_info_get_hashtable(__info_name, __hashtable)            \
+    weechat_plugin->info_get_hashtable(weechat_plugin, __info_name,     \
+                                       __hashtable)
 
 /* infolists */
 #define weechat_infolist_new()                                          \
